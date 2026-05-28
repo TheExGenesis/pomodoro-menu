@@ -4,7 +4,7 @@ A tiny macOS menu bar Pomodoro timer. It has no Dock icon: the timer lives in th
 
 ## Features
 
-- Menu-bar progress ring with remaining minutes or seconds.
+- Menu-bar progress ring beside the remaining minutes or seconds.
 - Focus, short break, and long break phases.
 - Preset regimes: Classic 25/5, Balanced 35/5, Deep Work 50/10, and Long Arc 75/15.
 - Settings window for phase durations, long-break cadence, sound, notifications, and auto-start.

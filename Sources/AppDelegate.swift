@@ -322,10 +322,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshStatusItem() {
         let clampedTotal = max(totalSeconds, 1)
         let fractionRemaining = CGFloat(max(0, min(remainingSeconds, clampedTotal))) / CGFloat(clampedTotal)
-        let minutes = displayMinutes(remainingSeconds)
-
         if let button = statusItem.button {
-            button.image = progressIcon(fractionRemaining: fractionRemaining, minutes: minutes)
+            button.image = progressIcon(fractionRemaining: fractionRemaining)
             button.title = displayText(for: remainingSeconds)
             button.toolTip = toolTipText
         }
@@ -360,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return String(format: "%02d:%02d", safeSeconds / 60, safeSeconds % 60)
     }
 
-    private func progressIcon(fractionRemaining: CGFloat, minutes: Int) -> NSImage {
+    private func progressIcon(fractionRemaining: CGFloat) -> NSImage {
         let size = NSSize(width: 22, height: 22)
         let image = NSImage(size: size)
 
@@ -394,19 +392,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         progress.lineCapStyle = .round
         accentColor(for: fractionRemaining).setStroke()
         progress.stroke()
-
-        let minuteText = "\(minutes)"
-        let fontSize: CGFloat = minutes >= 100 ? 5.8 : (minutes >= 10 ? 7.2 : 8.2)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let textSize = minuteText.size(withAttributes: attrs)
-        let textOrigin = NSPoint(
-            x: (size.width - textSize.width) / 2.0,
-            y: (size.height - textSize.height) / 2.0 - 0.3
-        )
-        minuteText.draw(at: textOrigin, withAttributes: attrs)
 
         return image
     }
