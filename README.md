@@ -9,10 +9,12 @@ A tiny macOS menu bar Pomodoro timer. It has no Dock icon: the timer lives in th
 - Preset regimes: Classic 25/5, Balanced 35/5, Deep Work 50/10, and Long Arc 75/15.
 - Settings window for phase durations, long-break cadence, sound, notifications, and auto-start.
 - Tasteful neutral completion sound, using macOS Glass by default.
+- Cute tomato app icon.
 
 ## Build
 
 ```bash
+./scripts/make_icon.sh
 ./scripts/build.sh
 ```
 

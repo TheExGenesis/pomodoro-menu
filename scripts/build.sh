@@ -22,6 +22,7 @@ swiftc \
   -o "$APP_PATH/Contents/MacOS/$EXECUTABLE"
 
 cp "$ROOT/Info.plist" "$APP_PATH/Contents/Info.plist"
+cp "$ROOT/Assets/PomodoroMenu.icns" "$APP_PATH/Contents/Resources/PomodoroMenu.icns"
 chmod +x "$APP_PATH/Contents/MacOS/$EXECUTABLE"
 
 if command -v codesign >/dev/null 2>&1; then
