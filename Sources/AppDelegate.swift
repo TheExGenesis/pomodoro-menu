@@ -323,7 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let clampedTotal = max(totalSeconds, 1)
         let fractionRemaining = CGFloat(max(0, min(remainingSeconds, clampedTotal))) / CGFloat(clampedTotal)
         if let button = statusItem.button {
-            button.image = progressIcon(fractionRemaining: fractionRemaining)
+            button.image = progressIcon(fractionRemaining: fractionRemaining, state: state)
             button.title = displayText(for: remainingSeconds)
             button.toolTip = toolTipText
         }
@@ -358,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return String(format: "%02d:%02d", safeSeconds / 60, safeSeconds % 60)
     }
 
-    private func progressIcon(fractionRemaining: CGFloat) -> NSImage {
+    private func progressIcon(fractionRemaining: CGFloat, state: TimerState) -> NSImage {
         let size = NSSize(width: 22, height: 22)
         let image = NSImage(size: size)
 
@@ -375,10 +375,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let center = NSPoint(x: ringRect.midX, y: ringRect.midY)
         let radius = ringRect.width / 2.0
 
+        let trackAlpha: CGFloat = state == .idle ? 0.42 : 0.24
         let background = NSBezierPath(ovalIn: ringRect)
         background.lineWidth = 2.2
-        NSColor.black.withAlphaComponent(0.28).setStroke()
+        NSColor.black.withAlphaComponent(trackAlpha).setStroke()
         background.stroke()
+
+        switch state {
+        case .idle:
+            drawPlayGlyph(in: ringRect)
+        case .running:
+            drawProgressArc(fractionRemaining: fractionRemaining, center: center, radius: radius, alpha: 1.0)
+        case .paused:
+            drawProgressArc(fractionRemaining: fractionRemaining, center: center, radius: radius, alpha: 0.74)
+            drawPauseGlyph(in: ringRect)
+        case .finished:
+            drawCheckGlyph(in: ringRect)
+        }
+
+        return image
+    }
+
+    private func drawProgressArc(fractionRemaining: CGFloat, center: NSPoint, radius: CGFloat, alpha: CGFloat) {
+        guard fractionRemaining > 0.0001 else { return }
 
         let progress = NSBezierPath()
         progress.appendArc(
@@ -390,9 +409,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         progress.lineWidth = 2.4
         progress.lineCapStyle = .round
-        NSColor.black.setStroke()
+        NSColor.black.withAlphaComponent(alpha).setStroke()
         progress.stroke()
+    }
 
-        return image
+    private func drawPlayGlyph(in ringRect: NSRect) {
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: ringRect.midX - 1.8, y: ringRect.midY - 3.4))
+        path.line(to: NSPoint(x: ringRect.midX - 1.8, y: ringRect.midY + 3.4))
+        path.line(to: NSPoint(x: ringRect.midX + 3.5, y: ringRect.midY))
+        path.close()
+        NSColor.black.withAlphaComponent(0.82).setFill()
+        path.fill()
+    }
+
+    private func drawPauseGlyph(in ringRect: NSRect) {
+        let barSize = NSSize(width: 1.8, height: 6.8)
+        let gap: CGFloat = 2.0
+        let leftX = ringRect.midX - gap / 2.0 - barSize.width
+        let rightX = ringRect.midX + gap / 2.0
+        let y = ringRect.midY - barSize.height / 2.0
+
+        NSColor.black.withAlphaComponent(0.9).setFill()
+        NSBezierPath(roundedRect: NSRect(x: leftX, y: y, width: barSize.width, height: barSize.height), xRadius: 0.8, yRadius: 0.8).fill()
+        NSBezierPath(roundedRect: NSRect(x: rightX, y: y, width: barSize.width, height: barSize.height), xRadius: 0.8, yRadius: 0.8).fill()
+    }
+
+    private func drawCheckGlyph(in ringRect: NSRect) {
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: ringRect.midX - 4.4, y: ringRect.midY - 0.2))
+        path.line(to: NSPoint(x: ringRect.midX - 1.2, y: ringRect.midY - 3.3))
+        path.line(to: NSPoint(x: ringRect.midX + 4.8, y: ringRect.midY + 3.4))
+        path.lineWidth = 2.2
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        NSColor.black.withAlphaComponent(0.95).setStroke()
+        path.stroke()
     }
 }
