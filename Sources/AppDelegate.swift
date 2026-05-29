@@ -365,7 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         image.lockFocus()
         defer {
             image.unlockFocus()
-            image.isTemplate = false
+            image.isTemplate = true
         }
 
         NSColor.clear.setFill()
@@ -377,7 +377,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let background = NSBezierPath(ovalIn: ringRect)
         background.lineWidth = 2.2
-        NSColor.secondaryLabelColor.withAlphaComponent(0.34).setStroke()
+        NSColor.black.withAlphaComponent(0.28).setStroke()
         background.stroke()
 
         let progress = NSBezierPath()
@@ -390,24 +390,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         progress.lineWidth = 2.4
         progress.lineCapStyle = .round
-        accentColor(for: fractionRemaining).setStroke()
+        NSColor.black.setStroke()
         progress.stroke()
 
         return image
-    }
-
-    private func accentColor(for fractionRemaining: CGFloat) -> NSColor {
-        if state == .finished || fractionRemaining <= 0.0001 {
-            return NSColor.systemGreen
-        }
-
-        switch phase {
-        case .focus:
-            return NSColor.controlAccentColor
-        case .shortBreak:
-            return NSColor.systemTeal
-        case .longBreak:
-            return NSColor.systemIndigo
-        }
     }
 }
