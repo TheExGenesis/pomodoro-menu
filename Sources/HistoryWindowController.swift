@@ -3,7 +3,8 @@ import AppKit
 final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     private enum ColumnID {
         static let started = NSUserInterfaceItemIdentifier("started")
-        static let duration = NSUserInterfaceItemIdentifier("duration")
+        static let actual = NSUserInterfaceItemIdentifier("actual")
+        static let planned = NSUserInterfaceItemIdentifier("planned")
         static let outcome = NSUserInterfaceItemIdentifier("outcome")
         static let intention = NSUserInterfaceItemIdentifier("intention")
         static let review = NSUserInterfaceItemIdentifier("review")
@@ -117,10 +118,11 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
         addColumn(id: ColumnID.started, title: "Started", width: 150)
-        addColumn(id: ColumnID.duration, title: "Minutes", width: 70)
+        addColumn(id: ColumnID.actual, title: "Actual", width: 66)
+        addColumn(id: ColumnID.planned, title: "Planned", width: 70)
         addColumn(id: ColumnID.outcome, title: "Did it?", width: 70)
-        addColumn(id: ColumnID.intention, title: "Doing", width: 230)
-        addColumn(id: ColumnID.review, title: "Review", width: 270)
+        addColumn(id: ColumnID.intention, title: "Doing", width: 220)
+        addColumn(id: ColumnID.review, title: "Review", width: 240)
     }
 
     private func addColumn(id: NSUserInterfaceItemIdentifier, title: String, width: CGFloat) {
@@ -166,10 +168,13 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     private var summaryText: String {
         let completed = sessions.filter { $0.outcome == .done }.count
         let partial = sessions.filter { $0.outcome == .partial }.count
-        let plannedMinutes = sessions.reduce(0) { total, session in
-            total + Int(ceil(Double(session.plannedSeconds) / 60.0))
+        let totalPlannedMinutes = sessions.reduce(0) { total, session in
+            total + plannedMinutes(for: session)
         }
-        return "\(sessions.count) pomodoros - \(completed) done, \(partial) partial - \(plannedMinutes) planned minutes"
+        let totalActualMinutes = sessions.reduce(0) { total, session in
+            total + actualMinutes(for: session)
+        }
+        return "\(sessions.count) pomodoros - \(completed) done, \(partial) partial - \(totalActualMinutes) actual / \(totalPlannedMinutes) planned minutes"
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -208,8 +213,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         switch column {
         case ColumnID.started:
             return startedFormatter.string(from: session.startedAt)
-        case ColumnID.duration:
-            return "\(Int(ceil(Double(session.plannedSeconds) / 60.0)))"
+        case ColumnID.actual:
+            return "\(actualMinutes(for: session))"
+        case ColumnID.planned:
+            return "\(plannedMinutes(for: session))"
         case ColumnID.outcome:
             return session.outcome.title
         case ColumnID.intention:
@@ -242,7 +249,8 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         detailTextView.string = """
         Started: \(startedFormatter.string(from: session.startedAt))
         Ended: \(endedText)
-        Planned: \(Int(ceil(Double(session.plannedSeconds) / 60.0))) minutes
+        Actual: \(actualMinutes(for: session)) minutes
+        Planned: \(plannedMinutes(for: session)) minutes
         Did you do it?: \(session.outcome.title)
 
         Doing:
@@ -251,6 +259,16 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         What happened:
         \(displayText(session.review))
         """
+    }
+
+    private func actualMinutes(for session: PomodoroSession) -> Int {
+        guard let endedAt = session.endedAt else { return 0 }
+        let elapsed = max(0, endedAt.timeIntervalSince(session.startedAt))
+        return Int(ceil(elapsed / 60.0))
+    }
+
+    private func plannedMinutes(for session: PomodoroSession) -> Int {
+        Int(ceil(Double(session.plannedSeconds) / 60.0))
     }
 
     @objc private func closeWindow() {

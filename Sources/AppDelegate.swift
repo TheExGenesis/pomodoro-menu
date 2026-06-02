@@ -72,6 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         resetForCurrentPhase(markIdle: true)
     }
 
+    @objc private func endPomoEarly() {
+        guard canEndPomoEarly else { return }
+        if state == .running {
+            updateRemainingFromClock()
+        }
+        completeTimer(playCompletionAlerts: false, endedEarly: true)
+    }
+
     @objc private func choosePhase(_ sender: NSMenuItem) {
         guard TimerPhase.allCases.indices.contains(sender.tag) else { return }
         phase = TimerPhase.allCases[sender.tag]
@@ -185,6 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func finishTimer() {
+        completeTimer(playCompletionAlerts: true, endedEarly: false)
+    }
+
+    private func completeTimer(playCompletionAlerts: Bool, endedEarly: Bool) {
         tickTimer?.invalidate()
         tickTimer = nil
         endDate = nil
@@ -199,16 +211,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         queuedPhase = nextPhase(after: completedPhase)
         refreshStatusItem()
 
-        if settings.soundEnabled {
+        if playCompletionAlerts && settings.soundEnabled {
             CompletionNotifier.shared.playCompletionSound(named: settings.soundName)
         }
 
-        if settings.notificationEnabled {
+        if playCompletionAlerts && settings.notificationEnabled {
             CompletionNotifier.shared.notifyCompletion(of: completedPhase, nextPhase: queuedPhase)
         }
 
         if completedPhase == .focus {
-            completeCurrentFocusSession()
+            completeCurrentFocusSession(endedEarly: endedEarly)
         } else {
             currentFocusSession = nil
         }
@@ -229,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func completeCurrentFocusSession() {
+    private func completeCurrentFocusSession(endedEarly: Bool) {
         var session = currentFocusSession ?? PomodoroSession(
             startedAt: Date().addingTimeInterval(-TimeInterval(totalSeconds)),
             plannedSeconds: totalSeconds,
@@ -237,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         session.endedAt = Date()
 
-        let review = promptForFocusReview(for: session)
+        let review = promptForFocusReview(for: session, endedEarly: endedEarly)
         session.outcome = review.outcome
         session.review = review.text
         historyStore.add(session)
@@ -263,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return normalizedText(field.stringValue)
     }
 
-    private func promptForFocusReview(for session: PomodoroSession) -> (outcome: PomodoroOutcome, text: String) {
+    private func promptForFocusReview(for session: PomodoroSession, endedEarly: Bool) -> (outcome: PomodoroOutcome, text: String) {
         let outcomePopup = NSPopUpButton(frame: .zero, pullsDown: false)
         for outcome in [PomodoroOutcome.done, .partial, .missed] {
             outcomePopup.addItem(withTitle: outcome.title)
@@ -306,7 +318,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = "Review"
         let intention = normalizedText(session.intention)
-        alert.informativeText = intention.isEmpty ? "Your focus timer finished." : "You planned to: \(intention)"
+        let statusText = endedEarly ? "Your focus timer ended early." : "Your focus timer finished."
+        alert.informativeText = intention.isEmpty ? statusText : "\(statusText) You planned to: \(intention)"
         alert.alertStyle = .informational
         alert.accessoryView = accessory
         alert.addButton(withTitle: "Save")
@@ -353,6 +366,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(commandItem(title: toggleTitle, symbol: toggleSymbol, action: #selector(toggleStartPause)))
+
+        let endEarly = commandItem(title: "End Pomo Early...", symbol: "stop.circle.fill", action: #selector(endPomoEarly))
+        endEarly.isEnabled = canEndPomoEarly
+        menu.addItem(endEarly)
 
         let reset = commandItem(title: "Reset", symbol: "arrow.counterclockwise", action: #selector(resetTimer))
         reset.isEnabled = state != .idle || remainingSeconds != settings.durationSeconds(for: phase)
@@ -409,6 +426,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return queuedPhase ?? phase
         }
         return phase
+    }
+
+    private var canEndPomoEarly: Bool {
+        phase == .focus && (state == .running || state == .paused)
     }
 
     private var currentFocusIntention: String? {
