@@ -29,6 +29,50 @@ enum TimerState {
     case finished
 }
 
+enum PomodoroOutcome: String, Codable, CaseIterable {
+    case done
+    case partial
+    case missed
+    case notRecorded
+
+    var title: String {
+        switch self {
+        case .done: return "Yes"
+        case .partial: return "Partly"
+        case .missed: return "No"
+        case .notRecorded: return "-"
+        }
+    }
+}
+
+struct PomodoroSession: Codable, Equatable {
+    let id: UUID
+    var startedAt: Date
+    var endedAt: Date?
+    var plannedSeconds: Int
+    var intention: String
+    var outcome: PomodoroOutcome
+    var review: String
+
+    init(
+        id: UUID = UUID(),
+        startedAt: Date,
+        endedAt: Date? = nil,
+        plannedSeconds: Int,
+        intention: String,
+        outcome: PomodoroOutcome = .notRecorded,
+        review: String = ""
+    ) {
+        self.id = id
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.plannedSeconds = plannedSeconds
+        self.intention = intention
+        self.outcome = outcome
+        self.review = review
+    }
+}
+
 struct DurationPreset: Equatable {
     let name: String
     let detail: String
@@ -67,4 +111,5 @@ struct CompletionSound: Equatable {
 
 extension Notification.Name {
     static let pomodoroSettingsChanged = Notification.Name("PomodoroSettingsChanged")
+    static let pomodoroHistoryChanged = Notification.Name("PomodoroHistoryChanged")
 }

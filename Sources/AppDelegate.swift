@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let settingsWindowController = SettingsWindowController()
+    private let historyWindowController = HistoryWindowController()
+    private let historyStore = PomodoroHistoryStore.shared
 
     private var phase: TimerPhase = .focus
     private var queuedPhase: TimerPhase?
@@ -14,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var remainingSeconds = PomodoroSettings.shared.durationSeconds(for: .focus)
     private var endDate: Date?
     private var tickTimer: Timer?
+    private var currentFocusSession: PomodoroSession?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -48,14 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleStartPause() {
         switch state {
         case .idle:
-            startClock()
+            beginTimerFromReadyState()
         case .finished:
             if let nextPhase = queuedPhase {
                 phase = nextPhase
                 queuedPhase = nil
             }
             resetForCurrentPhase(markIdle: true)
-            startClock()
+            beginTimerFromReadyState()
         case .paused:
             startClock()
         case .running:
@@ -65,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func resetTimer() {
         queuedPhase = nil
+        currentFocusSession = nil
         resetForCurrentPhase(markIdle: true)
     }
 
@@ -72,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard TimerPhase.allCases.indices.contains(sender.tag) else { return }
         phase = TimerPhase.allCases[sender.tag]
         queuedPhase = nil
+        currentFocusSession = nil
         resetForCurrentPhase(markIdle: true)
     }
 
@@ -99,6 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsWindowController.show()
     }
 
+    @objc private func openHistory() {
+        historyWindowController.show()
+    }
+
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
@@ -111,6 +120,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         refreshStatusItem()
+    }
+
+    private func beginTimerFromReadyState() {
+        if phase == .focus {
+            guard let intention = promptForFocusIntention() else { return }
+            currentFocusSession = PomodoroSession(
+                startedAt: Date(),
+                plannedSeconds: totalSeconds,
+                intention: intention
+            )
+        } else {
+            currentFocusSession = nil
+        }
+
+        startClock()
     }
 
     private func startClock() {
@@ -183,11 +207,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             CompletionNotifier.shared.notifyCompletion(of: completedPhase, nextPhase: queuedPhase)
         }
 
+        if completedPhase == .focus {
+            completeCurrentFocusSession()
+        } else {
+            currentFocusSession = nil
+        }
+
         guard settings.autoStartNextPhase, let nextPhase = queuedPhase else { return }
         phase = nextPhase
         queuedPhase = nil
         resetForCurrentPhase(markIdle: true)
-        startClock()
+        beginTimerFromReadyState()
     }
 
     private func nextPhase(after completedPhase: TimerPhase) -> TimerPhase? {
@@ -197,6 +227,105 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .shortBreak, .longBreak:
             return .focus
         }
+    }
+
+    private func completeCurrentFocusSession() {
+        var session = currentFocusSession ?? PomodoroSession(
+            startedAt: Date().addingTimeInterval(-TimeInterval(totalSeconds)),
+            plannedSeconds: totalSeconds,
+            intention: ""
+        )
+        session.endedAt = Date()
+
+        let review = promptForFocusReview(for: session)
+        session.outcome = review.outcome
+        session.review = review.text
+        historyStore.add(session)
+        currentFocusSession = nil
+    }
+
+    private func promptForFocusIntention() -> String? {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+        field.placeholderString = "e.g. Draft the launch notes"
+
+        let alert = NSAlert()
+        alert.messageText = "What are you doing?"
+        alert.informativeText = "Name this focus session before the timer starts."
+        alert.alertStyle = .informational
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Start")
+        alert.addButton(withTitle: "Cancel")
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.initialFirstResponder = field
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return nil }
+        return normalizedText(field.stringValue)
+    }
+
+    private func promptForFocusReview(for session: PomodoroSession) -> (outcome: PomodoroOutcome, text: String) {
+        let outcomePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        for outcome in [PomodoroOutcome.done, .partial, .missed] {
+            outcomePopup.addItem(withTitle: outcome.title)
+            outcomePopup.lastItem?.representedObject = outcome.rawValue
+        }
+
+        let question = NSTextField(labelWithString: "Did you do it?")
+        let questionRow = NSStackView(views: [question, outcomePopup])
+        questionRow.orientation = .horizontal
+        questionRow.alignment = .centerY
+        questionRow.spacing = 10
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 96))
+        textView.font = NSFont.systemFont(ofSize: 13)
+        textView.string = ""
+        textView.textContainerInset = NSSize(width: 4, height: 4)
+
+        let scrollView = NSScrollView(frame: .zero)
+        scrollView.borderType = .bezelBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.documentView = textView
+        scrollView.heightAnchor.constraint(equalToConstant: 104).isActive = true
+        scrollView.widthAnchor.constraint(equalToConstant: 420).isActive = true
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 168))
+        let stack = NSStackView(views: [questionRow, NSTextField(labelWithString: "What happened?"), scrollView])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        accessory.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: accessory.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: accessory.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: accessory.bottomAnchor)
+        ])
+
+        let alert = NSAlert()
+        alert.messageText = "Review"
+        let intention = normalizedText(session.intention)
+        alert.informativeText = intention.isEmpty ? "Your focus timer finished." : "You planned to: \(intention)"
+        alert.alertStyle = .informational
+        alert.accessoryView = accessory
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Skip")
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.initialFirstResponder = textView
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else {
+            return (.notRecorded, "")
+        }
+
+        let rawOutcome = outcomePopup.selectedItem?.representedObject as? String
+        let outcome = rawOutcome.flatMap(PomodoroOutcome.init(rawValue:)) ?? .notRecorded
+        return (outcome, normalizedText(textView.string))
+    }
+
+    private func normalizedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func rebuildMenu() {
@@ -209,6 +338,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let time = NSMenuItem(title: statusDetail, action: nil, keyEquivalent: "")
         time.isEnabled = false
         menu.addItem(time)
+
+        if let intention = currentFocusIntention {
+            let intentionItem = NSMenuItem(title: "Doing: \(intention)", action: nil, keyEquivalent: "")
+            intentionItem.isEnabled = false
+            menu.addItem(intentionItem)
+        }
 
         if state == .finished, let queuedPhase {
             let next = NSMenuItem(title: "Next: \(queuedPhase.title)", action: nil, keyEquivalent: "")
@@ -256,6 +391,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notifications.state = settings.notificationEnabled ? .on : .off
         menu.addItem(notifications)
 
+        menu.addItem(commandItem(title: "History...", symbol: "list.bullet.rectangle", action: #selector(openHistory)))
         menu.addItem(commandItem(title: "Settings...", symbol: "gearshape.fill", action: #selector(openSettings)))
         menu.addItem(.separator())
         menu.addItem(commandItem(title: "Quit Pomodoro", symbol: "xmark.circle", action: #selector(quitApp)))
@@ -273,6 +409,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return queuedPhase ?? phase
         }
         return phase
+    }
+
+    private var currentFocusIntention: String? {
+        guard phase == .focus, state == .running || state == .paused else { return nil }
+        let intention = normalizedText(currentFocusSession?.intention ?? "")
+        return intention.isEmpty ? nil : intention
     }
 
     private var statusTitle: String {
