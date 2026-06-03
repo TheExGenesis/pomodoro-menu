@@ -1,6 +1,6 @@
 import AppKit
 
-final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     private enum ColumnID {
         static let started = NSUserInterfaceItemIdentifier("started")
         static let actual = NSUserInterfaceItemIdentifier("actual")
@@ -31,6 +31,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
         startedFormatter.dateStyle = .medium
         startedFormatter.timeStyle = .short
+        startedFormatter.isLenient = true
 
         buildContent()
         reloadHistory()
@@ -150,6 +151,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     }
 
     @objc private func reloadHistory() {
+        let previouslySelectedID = selectedSessionID
         sessions = store.sessions()
         tableView.reloadData()
         summaryLabel.stringValue = summaryText
@@ -157,10 +159,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         if sessions.isEmpty {
             tableView.deselectAll(nil)
             detailTextView.string = "No pomodoros logged yet."
-        } else if tableView.selectedRow < 0 || tableView.selectedRow >= sessions.count {
-            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-            updateDetail()
         } else {
+            let selectedRow = previouslySelectedID
+                .flatMap { id in sessions.firstIndex { $0.id == id } } ?? 0
+            tableView.selectRowIndexes(IndexSet(integer: selectedRow), byExtendingSelection: false)
             updateDetail()
         }
     }
@@ -183,10 +185,16 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard sessions.indices.contains(row), let tableColumn else { return nil }
+        if tableColumn.identifier == ColumnID.outcome {
+            let popup = tableView.makeView(withIdentifier: ColumnID.outcome, owner: self) as? NSPopUpButton ?? makeOutcomePopup()
+            popup.tag = row
+            popup.selectItem(withTitle: sessions[row].outcome.title)
+            return popup
+        }
 
         let cellIdentifier = NSUserInterfaceItemIdentifier("cell-\(tableColumn.identifier.rawValue)")
         let cell = tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView ?? makeCell(identifier: cellIdentifier)
-        cell.textField?.stringValue = value(for: tableColumn.identifier, session: sessions[row])
+        configureTextCell(cell, column: tableColumn.identifier, session: sessions[row], row: row)
         return cell
     }
 
@@ -194,7 +202,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         let cell = NSTableCellView()
         cell.identifier = identifier
 
-        let field = NSTextField(labelWithString: "")
+        let field = NSTextField(frame: .zero)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.delegate = self
         field.lineBreakMode = .byTruncatingTail
         field.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(field)
@@ -209,6 +220,41 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         return cell
     }
 
+    private func configureTextCell(_ cell: NSTableCellView, column: NSUserInterfaceItemIdentifier, session: PomodoroSession, row: Int) {
+        guard let field = cell.textField else { return }
+        field.identifier = column
+        field.tag = row
+        field.stringValue = value(for: column, session: session)
+        field.isEditable = isEditableTextColumn(column)
+        field.isSelectable = true
+        field.textColor = isEditableTextColumn(column) ? .controlTextColor : .secondaryLabelColor
+    }
+
+    private func makeOutcomePopup() -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.identifier = ColumnID.outcome
+        popup.controlSize = .small
+        popup.font = NSFont.systemFont(ofSize: 12)
+        popup.target = self
+        popup.action = #selector(outcomeChanged)
+
+        for outcome in [PomodoroOutcome.done, .partial, .missed, .notRecorded] {
+            popup.addItem(withTitle: outcome.title)
+            popup.lastItem?.representedObject = outcome.rawValue
+        }
+
+        return popup
+    }
+
+    private func isEditableTextColumn(_ column: NSUserInterfaceItemIdentifier) -> Bool {
+        switch column {
+        case ColumnID.started, ColumnID.actual, ColumnID.planned, ColumnID.intention, ColumnID.review:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func value(for column: NSUserInterfaceItemIdentifier, session: PomodoroSession) -> String {
         switch column {
         case ColumnID.started:
@@ -220,9 +266,9 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         case ColumnID.outcome:
             return session.outcome.title
         case ColumnID.intention:
-            return displayText(session.intention)
+            return session.intention
         case ColumnID.review:
-            return displayText(session.review)
+            return session.review
         default:
             return ""
         }
@@ -231,6 +277,104 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     private func displayText(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "-" : trimmed
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField else { return }
+        commitTextEdit(from: field)
+    }
+
+    private func commitTextEdit(from field: NSTextField) {
+        let detectedRow = tableView.row(for: field)
+        let row = detectedRow >= 0 ? detectedRow : field.tag
+        guard sessions.indices.contains(row),
+              let column = field.identifier
+        else { return }
+
+        var session = sessions[row]
+        let original = session
+        switch column {
+        case ColumnID.started:
+            guard let startedAt = startedFormatter.date(from: field.stringValue) else {
+                reload(row: row)
+                return
+            }
+            let elapsed = session.endedAt?.timeIntervalSince(session.startedAt)
+            session.startedAt = startedAt
+            if let elapsed {
+                session.endedAt = startedAt.addingTimeInterval(elapsed)
+            }
+        case ColumnID.actual:
+            guard let minutes = integerValue(field.stringValue, min: 0, max: 24 * 60) else {
+                reload(row: row)
+                return
+            }
+            session.endedAt = session.startedAt.addingTimeInterval(TimeInterval(minutes * 60))
+        case ColumnID.planned:
+            guard let minutes = integerValue(field.stringValue, min: 1, max: 24 * 60) else {
+                reload(row: row)
+                return
+            }
+            session.plannedSeconds = minutes * 60
+        case ColumnID.intention:
+            session.intention = normalizedText(field.stringValue)
+        case ColumnID.review:
+            session.review = normalizedText(field.stringValue)
+        default:
+            return
+        }
+
+        guard session != original else {
+            reload(row: row)
+            return
+        }
+        saveEditedSession(session, row: row)
+    }
+
+    @objc private func outcomeChanged(_ sender: NSPopUpButton) {
+        let detectedRow = tableView.row(for: sender)
+        let row = detectedRow >= 0 ? detectedRow : sender.tag
+        guard sessions.indices.contains(row),
+              let rawValue = sender.selectedItem?.representedObject as? String,
+              let outcome = PomodoroOutcome(rawValue: rawValue)
+        else { return }
+
+        var session = sessions[row]
+        guard session.outcome != outcome else { return }
+        session.outcome = outcome
+        saveEditedSession(session, row: row)
+    }
+
+    private func saveEditedSession(_ session: PomodoroSession, row: Int) {
+        sessions[row] = session
+        store.update(session)
+        summaryLabel.stringValue = summaryText
+        updateDetail()
+    }
+
+    private func reload(row: Int) {
+        guard sessions.indices.contains(row) else { return }
+        tableView.reloadData(
+            forRowIndexes: IndexSet(integer: row),
+            columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
+        updateDetail()
+    }
+
+    private var selectedSessionID: UUID? {
+        let row = tableView.selectedRow
+        guard sessions.indices.contains(row) else { return nil }
+        return sessions[row].id
+    }
+
+    private func integerValue(_ text: String, min: Int, max: Int) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(trimmed) else { return nil }
+        return Swift.max(min, Swift.min(max, value))
+    }
+
+    private func normalizedText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {

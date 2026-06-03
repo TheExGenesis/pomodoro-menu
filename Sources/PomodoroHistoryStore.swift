@@ -26,6 +26,17 @@ final class PomodoroHistoryStore {
         save(sessions)
     }
 
+    func update(_ session: PomodoroSession) {
+        var sessions = loadSessions()
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else {
+            add(session)
+            return
+        }
+
+        sessions[index] = session
+        save(sessions)
+    }
+
     private func loadSessions() -> [PomodoroSession] {
         guard fileManager.fileExists(atPath: fileURL.path) else { return [] }
 
