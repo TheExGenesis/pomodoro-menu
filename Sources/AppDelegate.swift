@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var remainingSeconds = PomodoroSettings.shared.durationSeconds(for: .focus)
     private var endDate: Date?
     private var tickTimer: Timer?
+    private var activityFrame = 0
     private var currentFocusSession: PomodoroSession?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -82,10 +83,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func choosePhase(_ sender: NSMenuItem) {
         guard TimerPhase.allCases.indices.contains(sender.tag) else { return }
-        phase = TimerPhase.allCases[sender.tag]
+        startPhase(TimerPhase.allCases[sender.tag])
+    }
+
+    private func startPhase(_ selectedPhase: TimerPhase) {
+        if state == .running || state == .paused {
+            if phase == .focus {
+                if state == .running {
+                    updateRemainingFromClock()
+                }
+                completeTimer(playCompletionAlerts: false, endedEarly: true, allowAutoStart: false)
+            } else {
+                stopClock()
+                currentFocusSession = nil
+            }
+        }
+
+        phase = selectedPhase
         queuedPhase = nil
-        currentFocusSession = nil
         resetForCurrentPhase(markIdle: true)
+        beginTimerFromReadyState()
     }
 
     @objc private func applyPreset(_ sender: NSMenuItem) {
@@ -149,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state = .running
         endDate = Date().addingTimeInterval(TimeInterval(remainingSeconds))
         tickTimer?.invalidate()
+        activityFrame = 0
         tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.tick()
         }
@@ -159,16 +177,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func pauseClock() {
         updateRemainingFromClock()
         state = .paused
-        tickTimer?.invalidate()
-        tickTimer = nil
-        endDate = nil
+        stopClock()
         refreshStatusItem()
     }
 
-    private func resetForCurrentPhase(markIdle: Bool) {
+    private func stopClock() {
         tickTimer?.invalidate()
         tickTimer = nil
         endDate = nil
+    }
+
+    private func resetForCurrentPhase(markIdle: Bool) {
+        stopClock()
         if markIdle {
             state = .idle
         }
@@ -179,6 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func tick() {
         updateRemainingFromClock()
+        activityFrame = (activityFrame + 1) % 3
 
         if remainingSeconds <= 0 {
             finishTimer()
@@ -197,9 +218,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func completeTimer(playCompletionAlerts: Bool, endedEarly: Bool) {
-        tickTimer?.invalidate()
-        tickTimer = nil
-        endDate = nil
+        completeTimer(playCompletionAlerts: playCompletionAlerts, endedEarly: endedEarly, allowAutoStart: true)
+    }
+
+    private func completeTimer(playCompletionAlerts: Bool, endedEarly: Bool, allowAutoStart: Bool) {
+        stopClock()
         remainingSeconds = 0
         state = .finished
 
@@ -225,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             currentFocusSession = nil
         }
 
-        guard settings.autoStartNextPhase, let nextPhase = queuedPhase else { return }
+        guard allowAutoStart, settings.autoStartNextPhase, let nextPhase = queuedPhase else { return }
         phase = nextPhase
         queuedPhase = nil
         resetForCurrentPhase(markIdle: true)
@@ -288,10 +311,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         questionRow.alignment = .centerY
         questionRow.spacing = 10
 
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 96))
+        let textView = ShortcutTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 96))
         textView.font = NSFont.systemFont(ofSize: 13)
         textView.string = ""
+        textView.allowsUndo = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
         textView.textContainerInset = NSSize(width: 4, height: 4)
+        textView.textContainer?.containerSize = NSSize(width: 420, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
 
         let scrollView = NSScrollView(frame: .zero)
         scrollView.borderType = .bezelBorder
@@ -378,7 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         for (index, timerPhase) in TimerPhase.allCases.enumerated() {
             let item = commandItem(
-                title: "\(timerPhase.title) \(settings.minutes(for: timerPhase)) min",
+                title: "Start \(timerPhase.title) \(settings.minutes(for: timerPhase)) min",
                 symbol: timerPhase.symbolName,
                 action: #selector(choosePhase)
             )
@@ -486,7 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let clampedTotal = max(totalSeconds, 1)
         let fractionRemaining = CGFloat(max(0, min(remainingSeconds, clampedTotal))) / CGFloat(clampedTotal)
         if let button = statusItem.button {
-            button.image = progressIcon(fractionRemaining: fractionRemaining, state: state)
+            button.image = progressIcon(fractionRemaining: fractionRemaining, state: state, activityFrame: activityFrame)
             button.title = displayText(for: remainingSeconds)
             button.toolTip = toolTipText
         }
@@ -521,7 +553,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return String(format: "%02d:%02d", safeSeconds / 60, safeSeconds % 60)
     }
 
-    private func progressIcon(fractionRemaining: CGFloat, state: TimerState) -> NSImage {
+    private func progressIcon(fractionRemaining: CGFloat, state: TimerState, activityFrame: Int) -> NSImage {
         let size = NSSize(width: 22, height: 22)
         let image = NSImage(size: size)
 
@@ -549,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             drawPlayGlyph(in: ringRect)
         case .running:
             drawProgressArc(fractionRemaining: fractionRemaining, center: center, radius: radius, alpha: 1.0)
+            drawActivityEllipsis(in: ringRect, frame: activityFrame)
         case .paused:
             drawProgressArc(fractionRemaining: fractionRemaining, center: center, radius: radius, alpha: 0.74)
             drawPauseGlyph(in: ringRect)
@@ -574,6 +607,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         progress.lineCapStyle = .round
         NSColor.black.withAlphaComponent(alpha).setStroke()
         progress.stroke()
+    }
+
+    private func drawActivityEllipsis(in ringRect: NSRect, frame: Int) {
+        let dotRadius: CGFloat = 0.85
+        let spacing: CGFloat = 3.2
+        let startX = ringRect.midX - spacing
+        let y = ringRect.midY - dotRadius
+
+        for index in 0..<3 {
+            let alpha: CGFloat = index == frame % 3 ? 0.95 : 0.28
+            let x = startX + CGFloat(index) * spacing - dotRadius
+            NSColor.black.withAlphaComponent(alpha).setFill()
+            NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dotRadius * 2, height: dotRadius * 2)).fill()
+        }
     }
 
     private func drawPlayGlyph(in ringRect: NSRect) {
