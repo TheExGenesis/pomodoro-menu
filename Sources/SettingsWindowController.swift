@@ -14,7 +14,7 @@ final class SettingsWindowController: NSWindowController {
     private let longBreakEveryStepper = NSStepper(frame: .zero)
     private let soundEnabledButton = NSButton(checkboxWithTitle: "Ring a neutral completion sound", target: nil, action: nil)
     private let notificationEnabledButton = NSButton(checkboxWithTitle: "Send a notification when a phase ends", target: nil, action: nil)
-    private let autoStartButton = NSButton(checkboxWithTitle: "Automatically start the next phase", target: nil, action: nil)
+    private let autoStartButton = NSButton(checkboxWithTitle: "Automatically start focus after breaks", target: nil, action: nil)
     private let showSecondsButton = NSButton(checkboxWithTitle: "Show seconds when under 1 minute", target: nil, action: nil)
     private let soundPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let testSoundButton = NSButton(title: "Test", target: nil, action: nil)

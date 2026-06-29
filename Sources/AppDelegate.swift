@@ -248,7 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             currentFocusSession = nil
         }
 
-        guard allowAutoStart, settings.autoStartNextPhase, let nextPhase = queuedPhase else { return }
+        guard allowAutoStart,
+              let nextPhase = queuedPhase,
+              completedPhase == .focus || settings.autoStartNextPhase
+        else { return }
         phase = nextPhase
         queuedPhase = nil
         resetForCurrentPhase(markIdle: true)
