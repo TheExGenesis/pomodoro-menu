@@ -14,7 +14,6 @@ final class SettingsWindowController: NSWindowController {
     private let longBreakEveryStepper = NSStepper(frame: .zero)
     private let soundEnabledButton = NSButton(checkboxWithTitle: "Ring a neutral completion sound", target: nil, action: nil)
     private let notificationEnabledButton = NSButton(checkboxWithTitle: "Send a notification when a phase ends", target: nil, action: nil)
-    private let autoStartButton = NSButton(checkboxWithTitle: "Automatically start focus after breaks", target: nil, action: nil)
     private let showSecondsButton = NSButton(checkboxWithTitle: "Show seconds when under 1 minute", target: nil, action: nil)
     private let soundPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let testSoundButton = NSButton(title: "Test", target: nil, action: nil)
@@ -146,12 +145,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func optionsStack() -> NSStackView {
-        autoStartButton.target = self
-        autoStartButton.action = #selector(autoStartChanged)
         showSecondsButton.target = self
         showSecondsButton.action = #selector(showSecondsChanged)
 
-        let stack = NSStackView(views: [autoStartButton, showSecondsButton])
+        let stack = NSStackView(views: [showSecondsButton])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -236,7 +233,6 @@ final class SettingsWindowController: NSWindowController {
 
         soundEnabledButton.state = settings.soundEnabled ? .on : .off
         notificationEnabledButton.state = settings.notificationEnabled ? .on : .off
-        autoStartButton.state = settings.autoStartNextPhase ? .on : .off
         showSecondsButton.state = settings.showSecondsUnderMinute ? .on : .off
 
         if let soundIndex = CompletionSound.options.firstIndex(where: { $0.name == settings.soundName }) {
@@ -301,10 +297,6 @@ final class SettingsWindowController: NSWindowController {
                 self?.showNotificationPermissionAlert()
             }
         }
-    }
-
-    @objc private func autoStartChanged() {
-        settings.autoStartNextPhase = autoStartButton.state == .on
     }
 
     @objc private func showSecondsChanged() {

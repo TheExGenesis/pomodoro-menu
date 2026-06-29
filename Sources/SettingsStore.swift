@@ -11,7 +11,6 @@ final class PomodoroSettings {
         static let soundEnabled = "soundEnabled"
         static let notificationEnabled = "notificationEnabled"
         static let soundName = "soundName"
-        static let autoStartNextPhase = "autoStartNextPhase"
         static let showSecondsUnderMinute = "showSecondsUnderMinute"
     }
 
@@ -28,7 +27,6 @@ final class PomodoroSettings {
             Key.soundEnabled: true,
             Key.notificationEnabled: false,
             Key.soundName: CompletionSound.options[0].name,
-            Key.autoStartNextPhase: false,
             Key.showSecondsUnderMinute: true
         ])
     }
@@ -75,11 +73,6 @@ final class PomodoroSettings {
         }
     }
 
-    var autoStartNextPhase: Bool {
-        get { defaults.bool(forKey: Key.autoStartNextPhase) }
-        set { setBool(newValue, key: Key.autoStartNextPhase) }
-    }
-
     var showSecondsUnderMinute: Bool {
         get { defaults.bool(forKey: Key.showSecondsUnderMinute) }
         set { setBool(newValue, key: Key.showSecondsUnderMinute) }
@@ -119,7 +112,6 @@ final class PomodoroSettings {
         defaults.set(true, forKey: Key.soundEnabled)
         defaults.set(false, forKey: Key.notificationEnabled)
         defaults.set(CompletionSound.options[0].name, forKey: Key.soundName)
-        defaults.set(false, forKey: Key.autoStartNextPhase)
         defaults.set(true, forKey: Key.showSecondsUnderMinute)
         notifyChanged()
     }
