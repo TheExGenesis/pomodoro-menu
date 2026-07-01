@@ -531,9 +531,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return "\(phase.title) complete. Next: \(queuedPhase.title)"
             }
             return "\(phase.title) complete"
+        case .running:
+            if let intention = currentFocusIntention {
+                return "\(phase.title): \(clockText(remainingSeconds)) remaining - \(shortTooltipTitle(intention))"
+            }
+            return "\(phase.title): \(clockText(remainingSeconds)) remaining"
         default:
             return "\(phase.title): \(clockText(remainingSeconds)) remaining"
         }
+    }
+
+    private func shortTooltipTitle(_ title: String) -> String {
+        let compactTitle = title
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard compactTitle.count > 20 else { return compactTitle }
+        return "\(compactTitle.prefix(20))..."
     }
 
     private func displayText(for seconds: Int) -> String {
