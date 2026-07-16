@@ -280,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func promptForFocusIntention() -> String? {
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+        let field = ShortcutTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
         field.placeholderString = "e.g. Draft the launch notes"
 
         let alert = NSAlert()
@@ -288,8 +288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.informativeText = "Name this focus session before the timer starts."
         alert.alertStyle = .informational
         alert.accessoryView = field
-        alert.addButton(withTitle: "Start")
+        let startButton = alert.addButton(withTitle: "Start")
         alert.addButton(withTitle: "Cancel")
+        field.commandEnterAction = { [weak startButton] in
+            startButton?.performClick(nil)
+        }
 
         NSApp.activate(ignoringOtherApps: true)
         alert.window.initialFirstResponder = field
@@ -354,8 +357,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.informativeText = intention.isEmpty ? statusText : "\(statusText) You planned to: \(intention)"
         alert.alertStyle = .informational
         alert.accessoryView = accessory
-        alert.addButton(withTitle: "Save")
+        let saveButton = alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Skip")
+        textView.commandEnterAction = { [weak saveButton] in
+            saveButton?.performClick(nil)
+        }
 
         NSApp.activate(ignoringOtherApps: true)
         alert.window.initialFirstResponder = textView
