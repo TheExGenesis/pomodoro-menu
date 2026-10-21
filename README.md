@@ -39,6 +39,10 @@ open "dist/Pomodoro Menu.app"
 
 Click the menu bar item to start, pause, reset, switch phases, pick a regime, toggle sound/notifications, open settings, or quit.
 
+If the menu bar is crowded, macOS can hide items behind the camera notch. Pomodoro starts near the right edge and remembers its position; hold Command and drag it to rearrange it. Opening Pomodoro Menu again while it is running also shows its timer controls at the pointer, even if the menu bar item is hidden.
+
+For local development, `./script/build_and_run.sh` builds and relaunches the app. Add `--verify` to check that it started, or `--telemetry` to inspect menu bar diagnostics. The Codex Run action uses this script.
+
 ## Publish to GitHub
 
 This folder is its own git repository. After logging in with `gh auth login`, publish it with:

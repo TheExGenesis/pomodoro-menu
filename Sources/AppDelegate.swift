@@ -1,8 +1,19 @@
 import AppKit
+import OSLog
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = PomodoroSettings.shared
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let logger = Logger(subsystem: "local.codex.pomodoro-menubar", category: "MenuBar")
+    private lazy var statusItem: NSStatusItem = {
+        let name = "PomodoroTimer"
+        // AppKit restores positions by autosave name. Seed a right-hand position
+        // on first launch, without replacing a position the user has chosen.
+        UserDefaults.standard.register(defaults: ["NSStatusItem Preferred Position \(name)": 0])
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = name
+        item.isVisible = true
+        return item
+    }()
     private let menu = NSMenu()
     private let settingsWindowController = SettingsWindowController()
     private let historyWindowController = HistoryWindowController()
@@ -38,6 +49,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: nil
         )
         refreshStatusItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+            logger.debug("Menu bar item visible=\(self.statusItem.isVisible) frame=\(String(describing: self.statusItem.button?.window?.frame), privacy: .public)")
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusItem.isVisible = true
+        refreshStatusItem()
+        rebuildMenu()
+        sender.activate(ignoringOtherApps: true)
+        // A floating menu remains reachable even when macOS has no room for
+        // the status item (for example, on a display with a camera notch).
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        logger.info("Opened timer controls on application reopen")
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
